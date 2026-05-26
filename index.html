@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How a CPU Works</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #080d1a;
+    --bg-card: #0d1628;
+    --bg-panel: #111e35;
+    --cyan: #00e5ff;
+    --purple: #a855f7;
+    --green: #00ff88;
+    --orange: #ff6b35;
+    --yellow: #ffd60a;
+    --text: #c8d8f0;
+    --text-dim: #5a7090;
+    --border: rgba(0,229,255,0.15);
+    --glow-cyan: 0 0 20px rgba(0,229,255,0.4);
+    --glow-purple: 0 0 20px rgba(168,85,247,0.4);
+    --glow-green: 0 0 20px rgba(0,255,136,0.4);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg-deep);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(ellipse at 30% 20%, rgba(168,85,247,0.06) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 80%, rgba(0,229,255,0.06) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 0;
+    animation: drift 20s ease-in-out infinite alternate;
+  }
+
+  @keyframes drift {
+    from { transform: translate(0,0); }
+    to { transform: translate(2%, 2%); }
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 20px 60px;
+  }
+
+  /* Header */
+  .header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  .header-tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--cyan);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    opacity: 0.7;
+  }
+
+  .header h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(32px, 6vw, 56px);
+    font-weight: 900;
+    line-height: 1;
+    background: linear-gradient(135deg, var(--cyan) 0%, var(--purple) 50%, var(--cyan) 100%);
+    background-size: 200% 200%;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: gradientShift 4s ease infinite;
+    margin-bottom: 12px;
+  }
+
+  @keyframes gradientShift {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+
+  .header p {
+    color: var(--text-dim);
+    font-size: 15px;
+    letter-spacing: 1px;
+  }
+
+  /* Input Panel */
+  .input-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 32px;
+    margin-bottom: 28px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .input-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+  }
+
+  .input-label {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--cyan);
+    text-transform: uppercase;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+
+  .calc-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .calc-input {
+    width: 80px;
+    height: 56px;
+    background: rgba(0,229,255,0.05);
+    border: 1px solid rgba(0,229,255,0.3);
+    border-radius: 10px;
+    color: white;
+    font-family: 'Orbitron', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    text-align: center;
+    outline: none;
+    transition: all 0.3s;
+    -moz-appearance: textfield;
+  }
+
+  .calc-input::-webkit-outer-spin-button,
+  .calc-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+  .calc-input:focus {
+    border-color: var(--cyan);
+    box-shadow: var(--glow-cyan);
+    background: rgba(0,229,255,0.08);
+  }
+
+  .op-select {
+    width: 80px;
+    height: 56px;
+    background: rgba(168,85,247,0.08);
+    border: 1px solid rgba(168,85,247,0.4);
+    border-radius: 10px;
+    color: var(--purple);
+    font-family: 'Orbitron', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    text-align: center;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.3s;
+    appearance: none;
+  }
+
+  .op-select:focus {
+    border-color: var(--purple);
+    box-shadow: var(--glow-purple);
+  }
+
+  .equals {
+    font-family: 'Orbitron', monospace;
+    font-size: 22px;
+    color: var(--text-dim);
+  }
+
+  .result-box {
+    width: 100px;
+    height: 56px;
+    background: rgba(0,255,136,0.06);
+    border: 1px solid rgba(0,255,136,0.3);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', monospace;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--green);
+    transition: all 0.3s;
+  }
+
+  .result-box.revealed {
+    box-shadow: var(--glow-green);
+    animation: resultPop 0.4s ease;
+  }
+
+  @keyframes resultPop {
+    0% { transform: scale(0.8); }
+    60% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+  }
+
+  /* Step Display */
+  .step-panel {
+    border-radius: 16px;
+    padding: 36px 32px;
+    margin-bottom: 28px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.5s ease;
+    min-height: 180px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .step-panel.fetch {
+    background: linear-gradient(135deg, rgba(0,229,255,0.08), rgba(0,229,255,0.02));
+    border: 1px solid rgba(0,229,255,0.3);
+  }
+  .step-panel.decode {
+    background: linear-gradient(135deg, rgba(168,85,247,0.08), rgba(168,85,247,0.02));
+    border: 1px solid rgba(168,85,247,0.3);
+  }
+  .step-panel.execute {
+    background: linear-gradient(135deg, rgba(255,107,53,0.08), rgba(255,107,53,0.02));
+    border: 1px solid rgba(255,107,53,0.3);
+  }
+  .step-panel.store {
+    background: linear-gradient(135deg, rgba(0,255,136,0.08), rgba(0,255,136,0.02));
+    border: 1px solid rgba(0,255,136,0.3);
+  }
+  .step-panel.idle {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+  }
+
+  .step-number {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(28px, 5vw, 42px);
+    font-weight: 900;
+    margin-bottom: 10px;
+    transition: color 0.5s;
+  }
+  .fetch .step-number { color: var(--cyan); text-shadow: var(--glow-cyan); }
+  .decode .step-number { color: var(--purple); text-shadow: var(--glow-purple); }
+  .execute .step-number { color: var(--orange); text-shadow: 0 0 20px rgba(255,107,53,0.4); }
+  .store .step-number { color: var(--green); text-shadow: var(--glow-green); }
+  .idle .step-number { color: var(--text-dim); }
+
+  .step-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+  }
+
+  .step-detail {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    color: var(--text-dim);
+    max-width: 480px;
+  }
+
+  /* Scan line animation */
+  .step-panel::after {
+    content: '';
+    position: absolute;
+    top: -100%;
+    left: 0;
+    right: 0;
+    height: 2px;
+    opacity: 0;
+    transition: none;
+  }
+
+  .step-panel.active::after {
+    opacity: 1;
+    animation: scanLine 1.5s ease-in-out infinite;
+  }
+
+  .fetch.active::after { background: var(--cyan); }
+  .decode.active::after { background: var(--purple); }
+  .execute.active::after { background: var(--orange); }
+  .store.active::after { background: var(--green); }
+
+  @keyframes scanLine {
+    0% { top: -2px; }
+    100% { top: 100%; }
+  }
+
+  /* Progress Steps */
+  .progress-track {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    margin-bottom: 28px;
+  }
+
+  .step-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+  }
+
+  .step-connector {
+    width: 60px;
+    height: 2px;
+    background: var(--border);
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .step-connector.done::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    animation: connectorFill 0.4s ease forwards;
+  }
+
+  .step-connector.fetch-done::after { background: var(--cyan); }
+  .step-connector.decode-done::after { background: var(--purple); }
+  .step-connector.execute-done::after { background: var(--orange); }
+
+  @keyframes connectorFill {
+    from { width: 0; }
+    to { width: 100%; }
+  }
+
+  .node-circle {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', monospace;
+    font-weight: 900;
+    font-size: 16px;
+    border: 2px solid;
+    transition: all 0.4s ease;
+    position: relative;
+    cursor: default;
+  }
+
+  .node-circle.idle-node {
+    border-color: rgba(90,112,144,0.4);
+    color: var(--text-dim);
+    background: rgba(90,112,144,0.05);
+  }
+
+  .node-circle.active-node {
+    animation: nodeGlow 1s ease-in-out infinite alternate;
+  }
+
+  .node-circle.done-node {
+    opacity: 0.6;
+  }
+
+  .node-circle.fetch-active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,229,255,0.1); }
+  .node-circle.decode-active { border-color: var(--purple); color: var(--purple); background: rgba(168,85,247,0.1); }
+  .node-circle.execute-active { border-color: var(--orange); color: var(--orange); background: rgba(255,107,53,0.1); }
+  .node-circle.store-active { border-color: var(--green); color: var(--green); background: rgba(0,255,136,0.1); }
+
+  .node-circle.fetch-done { border-color: rgba(0,229,255,0.4); color: rgba(0,229,255,0.5); background: rgba(0,229,255,0.05); }
+  .node-circle.decode-done { border-color: rgba(168,85,247,0.4); color: rgba(168,85,247,0.5); background: rgba(168,85,247,0.05); }
+  .node-circle.execute-done { border-color: rgba(255,107,53,0.4); color: rgba(255,107,53,0.5); background: rgba(255,107,53,0.05); }
+  .node-circle.store-done { border-color: rgba(0,255,136,0.4); color: rgba(0,255,136,0.5); background: rgba(0,255,136,0.05); }
+
+  @keyframes nodeGlow {
+    from { box-shadow: 0 0 8px currentColor; }
+    to { box-shadow: 0 0 24px currentColor, 0 0 4px currentColor inset; }
+  }
+
+  .node-label {
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+
+  /* Buttons */
+  .btn-row {
+    display: flex;
+    justify-content: center;
+    gap: 14px;
+    margin-bottom: 32px;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 32px;
+    border-radius: 10px;
+    border: none;
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-start {
+    background: linear-gradient(135deg, #00c853, #00ff88);
+    color: #001a0d;
+  }
+
+  .btn-start:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0,255,136,0.35);
+  }
+
+  .btn-start:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-step {
+    background: rgba(0,229,255,0.1);
+    border: 1px solid rgba(0,229,255,0.4);
+    color: var(--cyan);
+  }
+
+  .btn-step:hover:not(:disabled) {
+    background: rgba(0,229,255,0.18);
+    box-shadow: var(--glow-cyan);
+    transform: translateY(-2px);
+  }
+
+  .btn-step:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-reset {
+    background: rgba(90,112,144,0.15);
+    border: 1px solid rgba(90,112,144,0.3);
+    color: var(--text-dim);
+  }
+
+  .btn-reset:hover {
+    background: rgba(90,112,144,0.25);
+    transform: translateY(-2px);
+  }
+
+  /* Log Panel */
+  .log-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .log-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .log-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: blink 1.5s ease-in-out infinite;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  .log-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+
+  .log-body {
+    padding: 16px 20px;
+    max-height: 160px;
+    overflow-y: auto;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    line-height: 1.8;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .log-entry {
+    display: flex;
+    gap: 12px;
+    animation: logFade 0.3s ease;
+  }
+
+  @keyframes logFade {
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: none; }
+  }
+
+  .log-time { color: var(--text-dim); min-width: 60px; }
+  .log-text.fetch { color: var(--cyan); }
+  .log-text.decode { color: var(--purple); }
+  .log-text.execute { color: var(--orange); }
+  .log-text.store { color: var(--green); }
+  .log-text.info { color: var(--text-dim); }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    margin-top: 32px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 2;
+  }
+
+  /* Speed control */
+  .speed-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .speed-label {
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+
+  .speed-btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: 1px;
+  }
+
+  .speed-btn:hover, .speed-btn.active-speed {
+    border-color: var(--cyan);
+    color: var(--cyan);
+    box-shadow: var(--glow-cyan);
+  }
+
+  /* Responsive */
+  @media (max-width: 540px) {
+    .step-connector { width: 30px; }
+    .node-circle { width: 44px; height: 44px; font-size: 14px; }
+    .btn { padding: 12px 20px; font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="header-tag"> CPU Architecture Simulator</div>
+    <h1>How a CPU Works</h1>
+    <p>Watch the CPU process your calculation step by step</p>
+  </div>
+
+  <!-- Input Panel -->
+  <div class="input-panel">
+    <div class="input-label"> Enter Your Calculation</div>
+    <div class="calc-row">
+      <input class="calc-input" type="number" id="numA" value="3" min="-999" max="999">
+      <select class="op-select" id="operator">
+        <option value="+">+</option>
+        <option value="-">−</option>
+        <option value="*">×</option>
+        <option value="/">÷</option>
+      </select>
+      <input class="calc-input" type="number" id="numB" value="3" min="-999" max="999">
+      <span class="equals">=</span>
+      <div class="result-box" id="resultBox">?</div>
+    </div>
+  </div>
+
+  <!-- Step Display -->
+  <div class="step-panel idle" id="stepPanel">
+    <div class="step-number" id="stepNum">—</div>
+    <div class="step-title" id="stepTitle">Ready to simulate</div>
+    <div class="step-detail" id="stepDetail">Enter values above and press Start or Step Through</div>
+  </div>
+
+  <!-- Progress Track -->
+  <div class="progress-track">
+    <div class="step-node">
+      <div class="node-circle idle-node" id="node1">1</div>
+      <div class="node-label">FETCH</div>
+    </div>
+    <div class="step-connector" id="conn1"></div>
+    <div class="step-node">
+      <div class="node-circle idle-node" id="node2">2</div>
+      <div class="node-label">DECODE</div>
+    </div>
+    <div class="step-connector" id="conn2"></div>
+    <div class="step-node">
+      <div class="node-circle idle-node" id="node3">3</div>
+      <div class="node-label">EXECUTE</div>
+    </div>
+    <div class="step-connector" id="conn3"></div>
+    <div class="step-node">
+      <div class="node-circle idle-node" id="node4">4</div>
+      <div class="node-label">STORE</div>
+    </div>
+  </div>
+
+  <!-- Speed Control -->
+  <div class="speed-row">
+    <span class="speed-label">Speed:</span>
+    <button class="speed-btn" onclick="setSpeed(2000)">SLOW</button>
+    <button class="speed-btn active-speed" onclick="setSpeed(1000)">NORMAL</button>
+    <button class="speed-btn" onclick="setSpeed(400)">FAST</button>
+  </div>
+
+  <!-- Buttons -->
+  <div class="btn-row">
+    <button class="btn btn-start" id="btnStart" onclick="startAuto()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+      START
+    </button>
+    <button class="btn btn-step" id="btnStep" onclick="stepOnce()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zm2-8.14L11.03 12 8 14.14V9.86zM16 6h2v12h-2z"/></svg>
+      STEP
+    </button>
+    <button class="btn btn-reset" onclick="resetSim()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+      RESET
+    </button>
+  </div>
+
+  <!-- Log -->
+  <div class="log-panel">
+    <div class="log-header">
+      <div class="log-dot"></div>
+      <div class="log-title">CPU Activity Log</div>
+    </div>
+    <div class="log-body" id="logBody">
+      <div class="log-entry">
+        <span class="log-time">00:00</span>
+        <span class="log-text info">System initialized. Awaiting instruction...</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div>Every time your computer does something, it goes through these 4 steps.</div>
+    <div>Billions of times per second 🚀</div>
+  </div>
+
+</div>
+
+<script>
+  const steps = [
+    {
+      key: 'fetch',
+      num: '1. FETCH',
+      title: 'Get the instruction from memory',
+      getDetail: (a, op, b) => `CPU asks: "What should I do next?" → Instruction loaded: COMPUTE ${a} ${op} ${b}`,
+      log: (a, op, b) => `FETCH → Instruction retrieved from RAM: [OP:${op}] [A:${a}] [B:${b}]`
+    },
+    {
+      key: 'decode',
+      num: '2. DECODE',
+      title: 'Understand what the instruction means',
+      getDetail: (a, op, b) => `Control Unit decodes: "${op === '+' ? 'ADD' : op === '-' ? 'SUB' : op === '*' ? 'MUL' : 'DIV'}" operation on values ${a} and ${b}`,
+      log: (a, op, b) => `DECODE → Opcode: ${op === '+' ? 'ADD' : op === '-' ? 'SUB' : op === '*' ? 'MUL' : 'DIV'} | Operands loaded into registers R1=${a}, R2=${b}`
+    },
+    {
+      key: 'execute',
+      num: '3. EXECUTE',
+      title: 'ALU performs the calculation',
+      getDetail: (a, op, b) => {
+        const result = calc(a, op, b);
+        return `ALU computes: ${a} ${op} ${b} = ${result !== null ? result : 'ERROR'} → Result ready in accumulator`;
+      },
+      log: (a, op, b) => {
+        const result = calc(a, op, b);
+        return `EXECUTE → ALU result: ${a} ${op} ${b} = ${result !== null ? result : 'ERR'} (stored in ACC register)`;
+      }
+    },
+    {
+      key: 'store',
+      num: '4. STORE',
+      title: 'Write the result back to memory',
+      getDetail: (a, op, b) => {
+        const result = calc(a, op, b);
+        return `Result ${result !== null ? result : 'ERR'} written to memory address 0x00FF → Cycle complete!`;
+      },
+      log: (a, op, b) => {
+        const result = calc(a, op, b);
+        return `STORE → Value [${result !== null ? result : 'ERR'}] written to memory addr 0x00FF. Cycle complete.`;
+      }
+    }
+  ];
+
+  let currentStep = -1;
+  let autoTimer = null;
+  let speed = 1000;
+  let startTime = null;
+
+  function calc(a, op, b) {
+    a = parseFloat(a); b = parseFloat(b);
+    if (isNaN(a) || isNaN(b)) return null;
+    if (op === '+') return a + b;
+    if (op === '-') return a - b;
+    if (op === '*') return a * b;
+    if (op === '/') return b === 0 ? 'ERR' : parseFloat((a / b).toFixed(4));
+    return null;
+  }
+
+  function getInputs() {
+    return {
+      a: document.getElementById('numA').value,
+      op: document.getElementById('operator').value,
+      b: document.getElementById('numB').value
+    };
+  }
+
+  function setSpeed(ms) {
+    speed = ms;
+    document.querySelectorAll('.speed-btn').forEach(btn => {
+      btn.classList.remove('active-speed');
+      if ((ms === 2000 && btn.textContent === 'SLOW') ||
+          (ms === 1000 && btn.textContent === 'NORMAL') ||
+          (ms === 400 && btn.textContent === 'FAST')) {
+        btn.classList.add('active-speed');
+      }
+    });
+    if (autoTimer) {
+      clearInterval(autoTimer);
+      autoTimer = setInterval(stepOnce, speed);
+    }
+  }
+
+  function getElapsed() {
+    if (!startTime) return '00:00';
+    const s = Math.floor((Date.now() - startTime) / 1000);
+    return String(Math.floor(s / 60)).padStart(2,'0') + ':' + String(s % 60).padStart(2,'0');
+  }
+
+  function addLog(text, type) {
+    const logBody = document.getElementById('logBody');
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    entry.innerHTML = `<span class="log-time">${getElapsed()}</span><span class="log-text ${type}">${text}</span>`;
+    logBody.appendChild(entry);
+    logBody.scrollTop = logBody.scrollHeight;
+  }
+
+  function updateNodes(active) {
+    const names = ['fetch','decode','execute','store'];
+    names.forEach((name, i) => {
+      const node = document.getElementById(`node${i+1}`);
+      node.className = 'node-circle';
+      if (i < active) {
+        node.classList.add('done-node', `${name}-done`);
+      } else if (i === active) {
+        node.classList.add('active-node', `${name}-active`);
+      } else {
+        node.classList.add('idle-node');
+      }
+    });
+    // Connectors
+    ['conn1','conn2','conn3'].forEach((id, i) => {
+      const conn = document.getElementById(id);
+      conn.className = 'step-connector';
+      if (i < active) {
+        conn.classList.add('done', `${names[i]}-done`);
+      }
+    });
+  }
+
+  function applyStep(idx) {
+    const { a, op, b } = getInputs();
+    const step = steps[idx];
+    const panel = document.getElementById('stepPanel');
+    const opSymbol = op === '+' ? '+' : op === '-' ? '−' : op === '*' ? '×' : '÷';
+
+    // Update panel
+    panel.className = `step-panel ${step.key} active`;
+    document.getElementById('stepNum').textContent = step.num;
+    document.getElementById('stepTitle').textContent = step.title;
+    document.getElementById('stepDetail').textContent = step.getDetail(a, opSymbol, b);
+
+    // Update nodes
+    updateNodes(idx);
+
+    // Log
+    addLog(step.log(a, opSymbol, b), step.key);
+
+    // Show result on store step
+    if (idx === 3) {
+      const result = calc(a, op, b);
+      const box = document.getElementById('resultBox');
+      box.textContent = result !== null ? result : 'ERR';
+      box.classList.add('revealed');
+    }
+  }
+
+  function stepOnce() {
+    if (currentStep >= 3) {
+      finishSim();
+      return;
+    }
+    if (!startTime) startTime = Date.now();
+    currentStep++;
+    applyStep(currentStep);
+
+    if (currentStep >= 3) {
+      finishSim();
+    }
+  }
+
+  function finishSim() {
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+    document.getElementById('btnStart').disabled = true;
+    document.getElementById('btnStep').disabled = true;
+    addLog('Instruction cycle complete. CPU ready for next instruction.', 'info');
+  }
+
+  function startAuto() {
+    if (autoTimer) return;
+    startTime = startTime || Date.now();
+    document.getElementById('btnStart').disabled = true;
+    autoTimer = setInterval(() => {
+      if (currentStep >= 3) {
+        finishSim();
+        return;
+      }
+      stepOnce();
+    }, speed);
+    stepOnce(); // Immediate first step
+  }
+
+  function resetSim() {
+    if (autoTimer) { clearInterval(autoTimer); autoTimer = null; }
+    currentStep = -1;
+    startTime = null;
+
+    const panel = document.getElementById('stepPanel');
+    panel.className = 'step-panel idle';
+    document.getElementById('stepNum').textContent = '—';
+    document.getElementById('stepTitle').textContent = 'Ready to simulate';
+    document.getElementById('stepDetail').textContent = 'Enter values above and press Start or Step Through';
+
+    const box = document.getElementById('resultBox');
+    box.textContent = '?';
+    box.classList.remove('revealed');
+
+    updateNodes(-1);
+
+    document.getElementById('btnStart').disabled = false;
+    document.getElementById('btnStep').disabled = false;
+
+    const logBody = document.getElementById('logBody');
+    logBody.innerHTML = `<div class="log-entry"><span class="log-time">00:00</span><span class="log-text info">System reset. Awaiting instruction...</span></div>`;
+  }
+
+  // Reset result on input change
+  ['numA','numB','operator'].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => {
+      if (currentStep === -1) return;
+      resetSim();
+    });
+  });
+</script>
+</body>
+</html>
